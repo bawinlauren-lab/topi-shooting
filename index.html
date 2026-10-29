@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DUST & LEAD: Wild West Hand-Tracking Gunslinger</title>
+    <!-- MediaPipe Hands & Camera Utils CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rye&family=Eater&family=Trade+Winds&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --wood-dark: #2a1810;
+            --wood-mid: #4a2e1b;
+            --wood-light: #7c5233;
+            --gold: #ffb834;
+            --cream: #f4e8c1;
+            --blood: #a31c1c;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0d0806;
+            font-family: 'Rye', serif, cursive;
+            color: var(--cream);
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(to bottom, 
+                #1a0503 0%, 
+                #42120e 25%, 
+                #8c3118 50%, 
+                #d96928 75%, 
+                #f0a85d 100%);
+            cursor: crosshair;
+        }
+
+        /* SUN & SKY ANIMATIONS */
+        .sunset-sun {
+            position: absolute;
+            bottom: 35%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle, #fff7bd 10%, #ff8c2b 60%, rgba(240, 168, 93, 0) 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 80px #ff6a00;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        /* BACKGROUND SILHOUETTES */
+        .mesas {
+            position: absolute;
+            bottom: 30%;
+            width: 100%;
+            height: 200px;
+            background-image: 
+                polygon(0% 100%, 0% 40%, 8% 35%, 15% 45%, 22% 20%, 35% 25%, 40% 50%, 55% 15%, 68% 30%, 80% 10%, 92% 38%, 100% 30%, 100% 100%);
+            background-size: cover;
+            fill: #220907;
+            pointer-events: none;
+        }
+
+        svg.mesa-svg {
+            position: absolute;
+            bottom: 30%;
+            width: 100%;
+            height: 180px;
+            pointer-events: none;
+        }
+
+        /* GROUND & TOWN ENVIRONMENT */
+        .ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 32%;
+            background: linear-gradient(to bottom, #3a1a0e 0%, #1c0a04 100%);
+            border-top: 4px solid #612f17;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.7);
+        }
+
+        .saloon-wrapper {
+            position: absolute;
+            bottom: 25%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 85%;
+            max-width: 1000px;
+            height: 380px;
+            pointer-events: none;
+        }
+
+        .saloon-building {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: var(--wood-dark);
+            border: 6px solid #140a06;
+            border-bottom: none;
+            box-shadow: inset 0 0 50px #000;
+        }
+
+        .saloon-roof {
+            position: absolute;
+            top: -40px;
+            left: -3%;
+            width: 106%;
+            height: 40px;
+            background: var(--wood-mid);
+            border: 4px solid #140a06;
+            transform: perspective(300px) rotateX(20deg);
+        }
+
+        .saloon-sign {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--wood-light);
+            border: 4px solid var(--wood-dark);
+            padding: 8px 30px;
+            color: var(--gold);
+            font-size: 28px;
+            letter-spacing: 4px;
+            text-shadow: 2px 2px 0px #000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            white-space: nowrap;
+        }
+
+        /* TARGET WINDOWS & DOORS */
+        .target-slot {
+            position: absolute;
+            background: #110704;
+            border: 3px solid var(--wood-mid);
+            box-shadow: inset 0 0 20px #000;
+            overflow: hidden;
+            pointer-events: auto;
+        }
+
+        .window-top-1 { top: 90px; left: 8%; width: 110px; height: 110px; }
+        .window-top-2 { top: 90px; left: 38%; width: 110px; height: 110px; }
+        .window-top-3 { top: 90px; right: 8%; width: 110px; height: 110px; }
+
+        .balcony-door { top: 80px; left: 63%; width: 100px; height: 130px; }
+        .saloon-door-main { bottom: 0; left: 42%; width: 150px; height: 160px; }
+        .saloon-porch-left { bottom: 0; left: 15%; width: 120px; height: 140px; }
+        .saloon-porch-right { bottom: 0; right: 15%; width: 120px; height: 140px; }
+
+        /* TARGETS (BANDITS & CIVILIANS) */
+        .target-character {
+            position: absolute;
+            bottom: -100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90px;
+            height: 120px;
+            transition: bottom 0.25s ease-out;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .target-character.active {
+            bottom: 0px;
+        }
+
+        .char-body {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: bottom center;
+        }
+
+        .bandit .char-body {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'><rect x='25' y='50' width='50' height='60' fill='%23a31c1c'/><circle cx='50' cy='35' r='20' fill='%23dca876'/><path d='M 30,30 Q 50,10 70,30 L 80,32 Q 50,20 20,32 Z' fill='%23222'/><rect x='30' y='38' width='40' height='15' fill='%23111'/><circle cx='42' cy='33' r='3' fill='%23fff'/><circle cx='58' cy='33' r='3' fill='%23fff'/><rect x='20' y='70' width='15' height='30' fill='%23333' transform='rotate(-20 20 70)'/></svg>");
+        }
+
+        .civilian .char-body {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'><rect x='25' y='50' width='50' height='60' fill='%232a52be'/><circle cx='50' cy='35' r='20' fill='%23f5c29b'/><path d='M 25,25 Q 50,5 75,25 L 85,30 Q 50,15 15,30 Z' fill='%237c5233'/><circle cx='42' cy='33' r='3' fill='%23000'/><circle cx='58' cy='33' r='3' fill='%23000'/><path d='M 40,42 Q 50,48 60,42' stroke='%23000' stroke-width='2' fill='none'/><rect x='15' y='50' width='12' height='40' fill='%23fff'/><rect x='73' y='50' width='12' height='40' fill='%23fff'/></svg>");
+        }
+
+        .sheriff .char-body {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'><rect x='25' y='50' width='50' height='60' fill='%235c4033'/><circle cx='50' cy='35' r='20' fill='%23e0a96d'/><polygon points='50,55 54,65 65,65 56,71 59,82 50,75 41,82 44,71 35,65 46,65' fill='%23ffb834'/><path d='M 20,25 Q 50,10 80,25 L 90,28 Q 50,18 10,28 Z' fill='%23332211'/><circle cx='42' cy='33' r='2' fill='%23000'/><circle cx='58' cy='33' r='2' fill='%23000'/></svg>");
+        }
+
+        /* DECORATIONS */
+        .cactus {
+            position: absolute;
+            bottom: 28%;
+            width: 50px;
+            height: 120px;
+            background: #183018;
+            border-radius: 25px 25px 0 0;
+            pointer-events: none;
+        }
+
+        .cactus-left { left: 4%; }
+        .cactus-right { right: 5%; transform: scaleX(-1); }
+
+        .cactus::before, .cactus::after {
+            content: '';
+            position: absolute;
+            background: #183018;
+            border-radius: 15px;
+        }
+
+        .cactus::before {
+            width: 18px; height: 50px; top: 30px; left: -15px; border-radius: 15px 0 0 15px; border-top: 18px solid #183018;
+        }
+        .cactus::after {
+            width: 18px; height: 40px; top: 20px; right: -15px; border-radius: 0 15px 15px 0; border-top: 18px solid #183018;
+        }
+
+        .tumbleweed {
+            position: absolute;
+            bottom: 12%;
+            right: -100px;
+            width: 60px;
+            height: 60px;
+            border: 3px dashed #7a502a;
+            border-radius: 50%;
+            opacity: 0.7;
+            pointer-events: none;
+            animation: roll 12s linear infinite;
+        }
+
+        @keyframes roll {
+            0% { transform: translateX(0) rotate(0deg); right: -100px; }
+            100% { transform: translateX(-120vw) rotate(-1080deg); right: 100%; }
+        }
+
+        /* PARTICLES & DUST */
+        .dust-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .dust-particle {
+            position: absolute;
+            background: rgba(240, 168, 93, 0.25);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatDust linear infinite;
+        }
+
+        @keyframes floatDust {
+            0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+            20% { opacity: 0.4; }
+            80% { opacity: 0.4; }
+            100% { transform: translate(-200px, -80px) rotate(360deg); opacity: 0; }
+        }
+
+        /* HUD & UI ELEMENTS */
+        .hud-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .wood-badge {
+            background: linear-gradient(135deg, var(--wood-light), var(--wood-dark));
+            border: 3px solid var(--gold);
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: auto;
+        }
+
+        .badge-title {
+            font-size: 12px;
+            color: #d1b280;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .badge-value {
+            font-size: 28px;
+            color: var(--gold);
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        /* REVOLVER AMMO CYLINDER HUD */
+        .ammo-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(20, 10, 6, 0.85);
+            padding: 10px 20px;
+            border-radius: 30px;
+            border: 2px solid var(--wood-light);
+        }
+
+        .cylinder {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 3px solid var(--gold);
+            position: relative;
+            background: #111;
+            transition: transform 0.4s ease;
+        }
+
+        .bullet-hole {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #333;
+            border: 1px solid #555;
+            transform: translate(-50%, -50%);
+        }
+
+        .bullet-hole.loaded {
+            background: radial-gradient(circle, #ffe600 30%, #b8860b 80%);
+            box-shadow: 0 0 6px #ffcc00;
+        }
+
+        .reload-btn {
+            background: var(--blood);
+            color: white;
+            border: 2px solid var(--gold);
+            font-family: 'Rye', cursive;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 4px 0 #520d0d;
+            transition: all 0.1s;
+        }
+
+        .reload-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #520d0d;
+        }
+
+        /* WEBCAM & HAND TRACKING OVERLAY */
+        .webcam-card {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            background: #000;
+            border: 3px solid var(--gold);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.8);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #webcam-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #hand-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+            pointer-events: none;
+        }
+
+        .cam-status {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            background: rgba(0,0,0,0.7);
+            color: #00ff66;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: sans-serif;
+        }
+
+        /* RETICLE & AIM CURSOR */
+        #aim-reticle {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+
+        .reticle-outer {
+            width: 100%;
+            height: 100%;
+            border: 2px dashed var(--gold);
+            border-radius: 50%;
+            animation: rotateReticle 10s linear infinite;
+        }
+
+        .reticle-inner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: #ff2222;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ff0000;
+        }
+
+        /* AUTO HOVER LOCK RING */
+        .hover-ring {
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            width: 70px;
+            height: 70px;
+            svg {
+                width: 100%;
+                height: 100%;
+                transform: rotate(-90deg);
+            }
+            circle {
+                fill: none;
+                stroke: #00ffcc;
+                stroke-width: 4;
+                stroke-dasharray: 200;
+                stroke-dashoffset: 200;
+                transition: stroke-dashoffset 0.05s linear;
+            }
+        }
+
+        @keyframes rotateReticle {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* HAND GESTURE GUIDES */
+        .gesture-guide {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 10, 6, 0.9);
+            border: 2px solid var(--wood-light);
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.6;
+            z-index: 15;
+            max-width: 300px;
+        }
+
+        .guide-title {
+            color: var(--gold);
+            font-size: 14px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #442211;
+            padding-bottom: 4px;
+        }
+
+        .guide-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .guide-icon {
+            font-size: 18px;
+        }
+
+        /* IMPACT & MUZZLE FLASH EFFECTS */
+        .muzzle-flash {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle, #fff 10%, #ffbb00 40%, rgba(255,0,0,0) 70%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 90;
+            opacity: 0;
+        }
+
+        .bullet-hole-mark {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #111;
+            border: 1px solid #444;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 5;
+            box-shadow: inset 0 0 4px #000;
+        }
+
+        .score-popup {
+            position: absolute;
+            font-family: 'Rye', cursive;
+            font-size: 26px;
+            font-weight: bold;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 110;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(-50%, -50%) scale(0.8); }
+            50% { transform: translate(-50%, -90px) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -120px) scale(1); }
+        }
+
+        /* START OVERLAY & DIALOGS */
+        .overlay-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 3, 0.88);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .main-title {
+            font-family: 'Trade Winds', cursive;
+            font-size: 64px;
+            color: var(--gold);
+            text-shadow: 4px 4px 0 #3a0000, 0 0 30px #ff6600;
+            margin-bottom: 10px;
+        }
+
+        .sub-title {
+            font-size: 20px;
+            color: var(--cream);
+            margin-bottom: 30px;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        .btn-western {
+            background: linear-gradient(180deg, #b82e2e 0%, #6e1111 100%);
+            color: var(--cream);
+            border: 3px solid var(--gold);
+            font-family: 'Rye', cursive;
+            font-size: 24px;
+            padding: 15px 45px;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.8);
+            transition: all 0.2s;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .btn-western:hover {
+            transform: scale(1.05);
+            background: linear-gradient(180deg, #d43d3d 0%, #8c1818 100%);
+            box-shadow: 0 10px 25px rgba(255,102,0,0.5);
+        }
+
+        .floot-badge {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: rgba(244, 232, 193, 0.5);
+            letter-spacing: 2px;
+            font-family: sans-serif;
+            pointer-events: none;
+        }
+
+        /* NOTIFICATION BANNER */
+        #banner-msg {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px;
+            color: var(--gold);
+            text-shadow: 3px 3px 0 #000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- SKY & ATMOSPHERE -->
+        <div class="sunset-sun"></div>
+        <svg class="mesa-svg" viewBox="0 0 1000 180" preserveAspectRatio="none">
+            <path d="M 0,180 L 0,100 L 50,90 L 120,90 L 140,120 L 220,110 L 280,60 L 380,60 L 420,130 L 550,120 L 600,40 L 720,40 L 780,110 L 880,100 L 930,70 L 1000,80 L 1000,180 Z" fill="#1f0906"/>
+        </svg>
+
+        <!-- TOWN & SALOON -->
+        <div class="saloon-wrapper">
+            <div class="saloon-building">
+                <div class="saloon-roof"></div>
+                <div class="saloon-sign">★ SALOON ★</div>
+
+                <!-- TARGET SLOTS -->
+                <div class="target-slot window-top-1" id="slot-0"></div>
+                <div class="target-slot window-top-2" id="slot-1"></div>
+                <div class="target-slot window-top-3" id="slot-2"></div>
+                <div class="target-slot balcony-door" id="slot-3"></div>
+                <div class="target-slot saloon-porch-left" id="slot-4"></div>
+                <div class="target-slot saloon-door-main" id="slot-5"></div>
+                <div class="target-slot saloon-porch-right" id="slot-6"></div>
+            </div>
+        </div>
+
+        <!-- GROUND & DECOR -->
+        <div class="ground"></div>
+        <div class="cactus cactus-left"></div>
+        <div class="cactus cactus-right"></div>
+        <div class="tumbleweed"></div>
+        <div class="dust-container" id="dust-box"></div>
+
+        <!-- HUD UI -->
+        <div class="hud-panel">
+            <div class="wood-badge">
+                <span class="badge-title">Bounty Score</span>
+                <span class="badge-value" id="score-val">0000</span>
+            </div>
+
+            <div class="ammo-container">
+                <div class="cylinder" id="revolver-cylinder"></div>
+                <button class="reload-btn" onclick="manualReload()">RELOAD [R]</button>
+            </div>
+
+            <div class="wood-badge">
+                <span class="badge-title">Time Left</span>
+                <span class="badge-value" id="timer-val">60s</span>
+            </div>
+        </div>
+
+        <!-- WEBCAM & HAND TRACKING PREVIEW -->
+        <div class="webcam-card">
+            <video id="webcam-video" autoplay playsinline muted></video>
+            <canvas id="hand-canvas"></canvas>
+            <div class="cam-status" id="cam-status-text">Cam: Loading...</div>
+        </div>
+
+        <!-- AIM RETICLE -->
+        <div id="aim-reticle">
+            <div class="reticle-outer"></div>
+            <div class="reticle-inner"></div>
+            <div class="hover-ring">
+                <svg>
+                    <circle id="hover-circle" cx="35" cy="35" r="30"></circle>
+                </svg>
+            </div>
+        </div>
+
+        <!-- IMPACT EFFECTS CONTAINER -->
+        <div id="fx-layer"></div>
+
+        <!-- GESTURE GUIDE -->
+        <div class="gesture-guide">
+            <div class="guide-title">🤠 Easy Controls</div>
+            <div class="guide-step"><span class="guide-icon">👉</span> <b>Point Finger:</b> Move Aim Reticle</div>
+            <div class="guide-step"><span class="guide-icon">🎯</span> <b>Auto-Shoot:</b> Hover over target for 0.3s</div>
+            <div class="guide-step"><span class="guide-icon">🤏</span> <b>Trigger:</b> Bend index finger to instantly shoot</div>
+            <div class="guide-step"><span class="guide-icon">✋</span> <b>Reload:</b> Show open palm OR press [R]</div>
+            <div class="guide-step"><span class="guide-icon">🖱️</span> <b>Mouse / Touch:</b> Click screen anytime to shoot</div>
+        </div>
+
+        <!-- BANNER MSG -->
+        <div id="banner-msg">QUICK DRAW!</div>
+
+        <!-- START / GAME OVER OVERLAY -->
+        <div class="overlay-screen" id="start-screen">
+            <h1 class="main-title">DUST & LEAD</h1>
+            <p class="sub-title">Wild West Hand-Tracking Gunslinger<br>Point your finger at bandits to aim. Hover or pull trigger to shoot!</p>
+            <button class="btn-western" onclick="startGame()">START GUNSLINGER</button>
+        </div>
+
+        <div class="floot-badge">Made with Floot</div>
+    </div>
+
+    <script>
+        // --- GAME STATE ---
+        let score = 0;
+        let ammo = 6;
+        let isReloading = false;
+        let timeLeft = 60;
+        let gameActive = false;
+        let gameTimer = null;
+        let targetSpawner = null;
+
+        // Aim & Tracking State
+        let aimX = window.innerWidth / 2;
+        let aimY = window.innerHeight / 2;
+        let targetAimX = aimX;
+        let targetAimY = aimY;
+        let hoverTarget = null;
+        let hoverStartTime = 0;
+        const HOVER_TRIGGER_DELAY = 300; // ms to auto-fire
+
+        let isTriggerBent = false;
+
+        // Target Slots Setup
+        const slots = Array.from({ length: 7 }, (_, i) => document.getElementById(`slot-${i}`));
+        const activeTargets = new Map(); // slotId -> target state
+
+        // Audio System (Web Audio Synthesizer)
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+        }
+
+        function playGunshotSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            // Noise burst for gun powder bang
+            const bufferSize = audioCtx.sampleRate * 0.3;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.04));
+            }
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(3000, now);
+            filter.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(1.0, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            noise.start(now);
+
+            // Metallic ricochet pitch sweep
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200, now + 0.05);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.25);
+
+            oscGain.gain.setValueAtTime(0.3, now + 0.05);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+
+            osc.connect(oscGain);
+            oscGain.connect(audioCtx.destination);
+
+            osc.start(now + 0.05);
+            osc.stop(now + 0.25);
+        }
+
+        function playReloadSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            
+            // Spin click sounds
+            for (let i = 0; i < 5; i++) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800 + i * 100, now + i * 0.08);
+                gain.gain.setValueAtTime(0.15, now + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.04);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now + i * 0.08);
+                osc.stop(now + i * 0.08 + 0.05);
+            }
+        }
+
+        function playHitSound(isCivilian = false) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = isCivilian ? 'sawtooth' : 'square';
+            osc.frequency.setValueAtTime(isCivilian ? 150 : 600, now);
+            osc.frequency.exponentialRampToValueAtTime(isCivilian ? 80 : 900, now + 0.15);
+
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        }
+
+        // --- CYLINDER & AMMO HUD ---
+        function renderCylinder() {
+            const cylinderEl = document.getElementById('revolver-cylinder');
+            cylinderEl.innerHTML = '';
+            
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * 60) * (Math.PI / 180);
+                const x = 25 + 16 * Math.cos(angle);
+                const y = 25 + 16 * Math.sin(angle);
+
+                const hole = document.createElement('div');
+                hole.className = `bullet-hole ${i < ammo ? 'loaded' : ''}`;
+                hole.style.left = `${x}px`;
+                hole.style.top = `${y}px`;
+                cylinderEl.appendChild(hole);
+            }
+        }
+
+        function manualReload() {
+            if (isReloading || ammo === 6) return;
+            isReloading = true;
+            playReloadSound();
+
+            const cylinderEl = document.getElementById('revolver-cylinder');
+            cylinderEl.style.transform = 'rotate(720deg)';
+
+            setTimeout(() => {
+                ammo = 6;
+                renderCylinder();
+                cylinderEl.style.transform = 'rotate(0deg)';
+                isReloading = false;
+            }, 600);
+        }
+
+        // --- SHOOTING MECHANIC ---
+        function shoot(x, y) {
+            if (!gameActive) return;
+
+            if (ammo <= 0) {
+                manualReload();
+                return;
+            }
+
+            if (isReloading) return;
+
+            ammo--;
+            renderCylinder();
+            playGunshotSound();
+
+            // Screen Shake Effect
+            const container = document.getElementById('game-container');
+            container.style.transform = `translate(${(Math.random()-0.5)*12}px, ${(Math.random()-0.5)*12}px)`;
+            setTimeout(() => container.style.transform = 'translate(0,0)', 50);
+
+            // Muzzle Flash Effect
+            const flash = document.createElement('div');
+            flash.className = 'muzzle-flash';
+            flash.style.left = `${x}px`;
+            flash.style.top = `${y}px`;
+            flash.style.opacity = '1';
+            document.getElementById('fx-layer').appendChild(flash);
+            setTimeout(() => flash.remove(), 80);
+
+            // Bullet Hole Impact
+            const hole = document.createElement('div');
+            hole.className = 'bullet-hole-mark';
+            hole.style.left = `${x}px`;
+            hole.style.top = `${y}px`;
+            document.getElementById('fx-layer').appendChild(hole);
+            setTimeout(() => hole.remove(), 4000);
+
+            // Hit Detection
+            checkHit(x, y);
+
+            if (ammo === 0) {
+                setTimeout(manualReload, 400);
+            }
+        }
+
+        function checkHit(x, y) {
+            let hitFound = false;
+
+            activeTargets.forEach((targetObj, slotId) => {
+                if (hitFound || !targetObj.active) return;
+
+                const rect = targetObj.element.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    hitFound = true;
+                    targetObj.active = false;
+                    targetObj.element.classList.remove('active');
+
+                    if (targetObj.type === 'bandit') {
+                        score += 100;
+                        playHitSound(false);
+                        showScorePopup(x, y, '+100 BOUNTY', '#ffb834');
+                    } else if (targetObj.type === 'civilian') {
+                        score = Math.max(0, score - 150);
+                        playHitSound(true);
+                        showScorePopup(x, y, '-150 CIVILIAN!', '#ff3333');
+                    } else if (targetObj.type === 'sheriff') {
+                        score = Math.max(0, score - 200);
+                        playHitSound(true);
+                        showScorePopup(x, y, '-200 SHERIFF!', '#ff3333');
+                    }
+
+                    document.getElementById('score-val').innerText = String(score).padStart(4, '0');
+                }
+            });
+        }
+
+        function showScorePopup(x, y, text, color) {
+            const popup = document.createElement('div');
+            popup.className = 'score-popup';
+            popup.innerText = text;
+            popup.style.color = color;
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            document.getElementById('fx-layer').appendChild(popup);
+            setTimeout(() => popup.remove(), 800);
+        }
+
+        // --- TARGET SPAWNING SYSTEM ---
+        function spawnTarget() {
+            if (!gameActive) return;
+
+            // Find empty slots
+            const emptySlots = slots.map((s, idx) => idx).filter(idx => !activeTargets.has(idx));
+            if (emptySlots.length === 0) return;
+
+            const randomSlotIdx = emptySlots[Math.floor(Math.random() * emptySlots.length)];
+            const slotEl = slots[randomSlotIdx];
+
+            // Target type probabilities: 70% Bandit, 20% Civilian, 10% Sheriff
+            const rand = Math.random();
+            let type = 'bandit';
+            if (rand > 0.70 && rand <= 0.90) type = 'civilian';
+            else if (rand > 0.90) type = 'sheriff';
+
+            const charEl = document.createElement('div');
+            charEl.className = `target-character ${type}`;
+            charEl.innerHTML = `<div class="char-body"></div>`;
+            slotEl.appendChild(charEl);
+
+            // Pop up delay
+            setTimeout(() => charEl.classList.add('active'), 50);
+
+            const targetObj = {
+                element: charEl,
+                type: type,
+                active: true,
+                slotIdx: randomSlotIdx
+            };
+
+            activeTargets.set(randomSlotIdx, targetObj);
+
+            // Target stay duration (1.8s to 3s)
+            const duration = Math.random() * 1200 + 1800;
+            setTimeout(() => {
+                if (activeTargets.has(randomSlotIdx)) {
+                    charEl.classList.remove('active');
+                    setTimeout(() => {
+                        charEl.remove();
+                        activeTargets.delete(randomSlotIdx);
+                    }, 300);
+                }
+            }, duration);
+        }
+
+        // --- DUST PARTICLES ENGINE ---
+        function createDustParticles() {
+            const dustBox = document.getElementById('dust-box');
+            for (let i = 0; i < 25; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'dust-particle';
+                const size = Math.random() * 8 + 4;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.left = `${Math.random() * 100}%`;
+                particle.style.top = `${Math.random() * 100}%`;
+                particle.style.animationDuration = `${Math.random() * 8 + 6}s`;
+                particle.style.animationDelay = `${Math.random() * 5}s`;
+                dustBox.appendChild(particle);
+            }
+        }
+
+        // --- GAME LOOP & HOVER AUTO-FIRE ---
+        function updateLoop() {
+            // Smooth aim reticle interpolation
+            aimX += (targetAimX - aimX) * 0.3;
+            aimY += (targetAimY - aimY) * 0.3;
+
+            const reticle = document.getElementById('aim-reticle');
+            reticle.style.left = `${aimX}px`;
+            reticle.style.top = `${aimY}px`;
+
+            // Hover Auto-Fire Lock-On Check
+            if (gameActive) {
+                let hoveredObj = null;
+
+                activeTargets.forEach((targetObj) => {
+                    if (!targetObj.active) return;
+                    const rect = targetObj.element.getBoundingClientRect();
+                    if (aimX >= rect.left && aimX <= rect.right && aimY >= rect.top && aimY <= rect.bottom) {
+                        hoveredObj = targetObj;
+                    }
+                });
+
+                const hoverCircle = document.getElementById('hover-circle');
+
+                if (hoveredObj) {
+                    if (hoverTarget !== hoveredObj) {
+                        hoverTarget = hoveredObj;
+                        hoverStartTime = performance.now();
+                    }
+
+                    const elapsed = performance.now() - hoverStartTime;
+                    const progress = Math.min(1.0, elapsed / HOVER_TRIGGER_DELAY);
+                    hoverCircle.style.strokeDashoffset = 200 - (200 * progress);
+
+                    if (elapsed >= HOVER_TRIGGER_DELAY) {
+                        shoot(aimX, aimY);
+                        hoverTarget = null; // reset hover after shoot
+                        hoverCircle.style.strokeDashoffset = 200;
+                    }
+                } else {
+                    hoverTarget = null;
+                    hoverCircle.style.strokeDashoffset = 200;
+                }
+            }
+
+            requestAnimationFrame(updateLoop);
+        }
+
+        // --- MOUSE & TOUCH FALLBACK CONTROLS ---
+        window.addEventListener('mousemove', (e) => {
+            targetAimX = e.clientX;
+            targetAimY = e.clientY;
+            document.getElementById('aim-reticle').style.display = 'block';
+        });
+
+        window.addEventListener('click', (e) => {
+            initAudio();
+            // Ignore UI clicks
+            if (e.target.closest('.wood-badge') || e.target.closest('.reload-btn') || e.target.closest('.overlay-screen')) return;
+            shoot(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                manualReload();
+            }
+        });
+
+        // --- MEDIAPIPE HAND TRACKING INTEGRATION ---
+        function initHandTracking() {
+            const videoElement = document.getElementById('webcam-video');
+            const canvasElement = document.getElementById('hand-canvas');
+            const canvasCtx = canvasElement.getContext('2d');
+            const statusText = document.getElementById('cam-status-text');
+
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults((results) => {
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    statusText.innerText = "Hand Active 🤠";
+                    statusText.style.color = "#00ff66";
+                    document.getElementById('aim-reticle').style.display = 'block';
+
+                    const landmarks = results.multiHandLandmarks[0];
+
+                    // Draw skeleton on preview canvas
+                    drawLandmarks(canvasCtx, landmarks);
+
+                    // Index Tip (Point 8) for Aiming
+                    const indexTip = landmarks[8];
+                    const indexMCP = landmarks[5]; // Index Knuckle
+                    const wrist = landmarks[0];
+
+                    // Map webcam mirrored coordinates to screen dimensions
+                    targetAimX = (1 - indexTip.x) * window.innerWidth;
+                    targetAimY = indexTip.y * window.innerHeight;
+
+                    // Gesture 1: Finger Bend Trigger Detection
+                    const indexDistance = Math.hypot(indexTip.x - indexMCP.x, indexTip.y - indexMCP.y);
+                    if (indexDistance < 0.08) {
+                        if (!isTriggerBent) {
+                            isTriggerBent = true;
+                            shoot(aimX, aimY);
+                        }
+                    } else {
+                        isTriggerBent = false;
+                    }
+
+                    // Gesture 2: Open Palm Reload Detection
+                    let fingersOpen = 0;
+                    const tips = [8, 12, 16, 20];
+                    tips.forEach(tipIdx => {
+                        if (landmarks[tipIdx].y < landmarks[tipIdx - 2].y) fingersOpen++;
+                    });
+
+                    if (fingersOpen >= 4) {
+                        manualReload();
+                    }
+
+                } else {
+                    statusText.innerText = "Show Hand to Aim";
+                    statusText.style.color = "#ffbb00";
+                }
+                canvasCtx.restore();
+            });
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 320,
+                height: 240
+            });
+
+            camera.start().catch(err => {
+                console.warn("Webcam access denied/failed:", err);
+                statusText.innerText = "Cam Disabled (Mouse Mode)";
+                statusText.style.color = "#ff4444";
+            });
+        }
+
+        function drawLandmarks(ctx, landmarks) {
+            ctx.fillStyle = '#ffb834';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+
+            landmarks.forEach((lm) => {
+                const x = lm.x * ctx.canvas.width;
+                const y = lm.y * ctx.canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        // --- GAME FLOW CONTROL ---
+        function startGame() {
+            initAudio();
+            document.getElementById('start-screen').style.display = 'none';
+
+            score = 0;
+            ammo = 6;
+            timeLeft = 60;
+            gameActive = true;
+
+            document.getElementById('score-val').innerText = '0000';
+            document.getElementById('timer-val').innerText = '60s';
+            renderCylinder();
+
+            showBanner("QUICK DRAW!");
+
+            // Spawner Loop
+            targetSpawner = setInterval(spawnTarget, 900);
+
+            // Countdown Timer Loop
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer-val').innerText = `${timeLeft}s`;
+
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(targetSpawner);
+            clearInterval(gameTimer);
+
+            // Clear active targets
+            activeTargets.forEach((targetObj) => targetObj.element.remove());
+            activeTargets.clear();
+
+            const startScreen = document.getElementById('start-screen');
+            startScreen.innerHTML = `
+                <h1 class="main-title">TIME'S UP!</h1>
+                <p class="sub-title">Your Final Bounty Score:<br><span style="font-size: 48px; color: var(--gold);">${score}</span></p>
+                <button class="btn-western" onclick="startGame()">PLAY AGAIN</button>
+            `;
+            startScreen.style.display = 'flex';
+        }
+
+        function showBanner(text) {
+            const banner = document.getElementById('banner-msg');
+            banner.innerText = text;
+            banner.style.opacity = '1';
+            setTimeout(() => banner.style.opacity = '0', 1500);
+        }
+
+        // --- INIT ON LOAD ---
+        window.addEventListener('load', () => {
+            renderCylinder();
+            createDustParticles();
+            initHandTracking();
+            requestAnimationFrame(updateLoop);
+        });
+    </script>
+</body>
+</html>
